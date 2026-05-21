@@ -108,6 +108,22 @@
 #define Pcw2VdieTranslation(chNo, wayNo) ((chNo) + (wayNo) * (USER_CHANNELS))
 #define PlsbPage2VpageTranslation(pageNo) ((pageNo) > (0) ? ( ((pageNo) + 1) / 2): (0))
 
+/* === Block-Level FTL (ESS4116) === */
+#define LBN_NONE	0xffffffff
+#define VBN_NONE	0xffffffff
+
+// Logical Block -> Virtual Block mapping entry
+typedef struct _LOGICAL_BLOCK_ENTRY {
+	unsigned int dieNo;
+	unsigned int virtualBlockNo;
+	unsigned int allocated;
+} LOGICAL_BLOCK_ENTRY, *P_LOGICAL_BLOCK_ENTRY;
+
+typedef struct _LOGICAL_BLOCK_MAP {
+	LOGICAL_BLOCK_ENTRY entry[USER_BLOCKS_PER_SSD];
+} LOGICAL_BLOCK_MAP, *P_LOGICAL_BLOCK_MAP;
+/* ================================= */
+
 //for logical to virtual translation
 typedef struct _LOGICAL_SLICE_ENTRY {
 	unsigned int virtualSliceAddr;
@@ -210,6 +226,10 @@ extern P_VIRTUAL_BLOCK_MAP virtualBlockMapPtr;
 extern P_VIRTUAL_DIE_MAP virtualDieMapPtr;
 extern P_PHY_BLOCK_MAP phyBlockMapPtr;
 extern P_BAD_BLOCK_TABLE_INFO_MAP bbtInfoMapPtr;
+
+/* === Block-Level FTL (ESS4116) === */
+extern LOGICAL_BLOCK_MAP logicalBlockMap;
+/* ================================= */
 
 extern unsigned char sliceAllocationTargetDie;
 extern unsigned int mbPerbadBlockSpace;

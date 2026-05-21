@@ -59,6 +59,10 @@ P_BAD_BLOCK_TABLE_INFO_MAP bbtInfoMapPtr;
 unsigned char sliceAllocationTargetDie;
 unsigned int mbPerbadBlockSpace;
 
+/* === Block-Level FTL (ESS4116) === */
+LOGICAL_BLOCK_MAP logicalBlockMap;
+/* ================================= */
+
 
 void InitAddressMap()
 {
@@ -95,6 +99,17 @@ void InitSliceMap()
 		logicalSliceMapPtr->logicalSlice[sliceAddr].virtualSliceAddr = VSA_NONE;
 		virtualSliceMapPtr->virtualSlice[sliceAddr].logicalSliceAddr = LSA_NONE;
 	}
+
+	/* === Block-Level FTL (ESS4116) === */
+	// initialize logical block -> virtual block mapping
+	unsigned int lbn;
+	for(lbn = 0; lbn < USER_BLOCKS_PER_SSD; lbn++)
+	{
+		logicalBlockMap.entry[lbn].dieNo = DIE_NONE;
+		logicalBlockMap.entry[lbn].virtualBlockNo = BLOCK_NONE;
+		logicalBlockMap.entry[lbn].allocated = 0;
+	}
+	/* ================================= */
 }
 
 void RemapBadBlock()
@@ -643,21 +658,61 @@ unsigned int AddrTransRead(unsigned int logicalSliceAddr)
 
 unsigned int AddrTransWrite(unsigned int logicalSliceAddr)
 {
+	/* === Block-Level FTL (ESS4116) === */
 	unsigned int virtualSliceAddr;
+	unsigned int logicalBlockNo, pageOffsetInBlock;
+	unsigned int dieNo, virtualBlockNo;
 
 	if(logicalSliceAddr < SLICES_PER_SSD)
 	{
+		// split logical slice address into logical block number + page offset
+		logicalBlockNo    = logicalSliceAddr / SLICES_PER_BLOCK;
+		pageOffsetInBlock = logicalSliceAddr % SLICES_PER_BLOCK;
+
+		// invalidate previous mapping of this exact slice (rewrite case)
 		InvalidateOldVsa(logicalSliceAddr);
 
-		virtualSliceAddr = FindFreeVirtualSlice();
+		// if this logical block has no physical block yet, allocate one
+		if(!logicalBlockMap.entry[logicalBlockNo].allocated)
+		{
+			// pick die in round-robin fashion based on logical block number
+			dieNo = logicalBlockNo % USER_DIES;
 
+			virtualBlockNo = GetFromFbList(dieNo, GET_FREE_BLOCK_NORMAL);
+			if(virtualBlockNo == BLOCK_FAIL)
+			{
+				GarbageCollection(dieNo);
+				virtualBlockNo = GetFromFbList(dieNo, GET_FREE_BLOCK_NORMAL);
+				if(virtualBlockNo == BLOCK_FAIL)
+					assert(!"[WARNING] There is no available block [WARNING]");
+			}
+
+			logicalBlockMap.entry[logicalBlockNo].dieNo          = dieNo;
+			logicalBlockMap.entry[logicalBlockNo].virtualBlockNo = virtualBlockNo;
+			logicalBlockMap.entry[logicalBlockNo].allocated      = 1;
+		}
+
+		dieNo          = logicalBlockMap.entry[logicalBlockNo].dieNo;
+		virtualBlockNo = logicalBlockMap.entry[logicalBlockNo].virtualBlockNo;
+
+		// map the slice to its natural page offset inside the assigned physical block
+		virtualSliceAddr = Vorg2VsaTranslation(dieNo, virtualBlockNo, pageOffsetInBlock);
+
+		// update slice maps
 		logicalSliceMapPtr->logicalSlice[logicalSliceAddr].virtualSliceAddr = virtualSliceAddr;
 		virtualSliceMapPtr->virtualSlice[virtualSliceAddr].logicalSliceAddr = logicalSliceAddr;
+
+		// keep currentPage in sync so erase/GC accounting still works
+		if(virtualBlockMapPtr->block[dieNo][virtualBlockNo].currentPage <= pageOffsetInBlock)
+			virtualBlockMapPtr->block[dieNo][virtualBlockNo].currentPage = pageOffsetInBlock + 1;
 
 		return virtualSliceAddr;
 	}
 	else
 		assert(!"[WARNING] Logical address is larger than maximum logical address served by SSD [WARNING]");
+
+	return VSA_FAIL;
+	/* ================================= */
 }
 
 
@@ -917,4 +972,3 @@ void UpdateBadBlockTableForGrownBadBlock(unsigned int tempBufAddr)
 	//update bad block tables in flash
 	SaveBadBlockTable(dieState, tempBbtBufAddr, tempBbtBufEntrySize);
 }
-
