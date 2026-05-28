@@ -1,0 +1,5 @@
+15:39:39 INFO  : Registering command handlers for SDK TCF services
+15:39:55 INFO  : Registering command handlers for SDK TCF services
+15:39:59 INFO  : Result from executing command 'getProjects': cosmos_hw
+15:40:01 INFO  : Result from executing command 'getProjects': cosmos_app_bsp;cosmos_hw
+15:40:54 INFO  : Registering command handlers for SDK TCF services
